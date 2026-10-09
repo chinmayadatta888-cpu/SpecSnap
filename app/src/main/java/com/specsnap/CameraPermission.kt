@@ -69,13 +69,7 @@ fun RequestCameraPermission() {
     }
 
     if (hasCameraPermission) {
-        Surface(modifier = Modifier.fillMaxSize()) {
-            Text(
-                text = "Camera permission granted. Live preview is added in the next step.",
-                modifier = Modifier.padding(24.dp),
-                style = MaterialTheme.typography.bodyLarge,
-            )
-        }
+        CameraPreview(modifier = Modifier.fillMaxSize())
     } else {
         CameraPermissionPrompt(
             permissionWasDenied = permissionWasDenied,
