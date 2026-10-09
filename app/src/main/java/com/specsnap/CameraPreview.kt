@@ -5,6 +5,8 @@ import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -53,6 +55,37 @@ fun CameraPreview(modifier: Modifier = Modifier) {
         }
     }
     var cameraUnavailable by remember { mutableStateOf(false) }
+    var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
+    var isCapturing by remember { mutableStateOf(false) }
+    var captureStatus by remember { mutableStateOf<String?>(null) }
+
+    fun captureFrame() {
+        val captureUseCase = imageCapture ?: return
+        if (isCapturing) return
+
+        isCapturing = true
+        captureStatus = null
+        try {
+            captureUseCase.takePicture(
+                ContextCompat.getMainExecutor(context),
+                object : ImageCapture.OnImageCapturedCallback() {
+                    override fun onCaptureSuccess(image: ImageProxy) {
+                        image.close()
+                        isCapturing = false
+                        captureStatus = "Capture complete."
+                    }
+
+                    override fun onError(exception: ImageCaptureException) {
+                        isCapturing = false
+                        captureStatus = "Could not capture an image. Try again."
+                    }
+                },
+            )
+        } catch (_: IllegalStateException) {
+            isCapturing = false
+            captureStatus = "Camera is not ready. Try again."
+        }
+    }
 
     DisposableEffect(lifecycleOwner, previewView) {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context.applicationContext)
@@ -70,6 +103,7 @@ fun CameraPreview(modifier: Modifier = Modifier) {
                         val imageCaptureUseCase = ImageCapture.Builder()
                             .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
                             .build()
+                        imageCapture = imageCaptureUseCase
                         camera = cameraProvider?.bindToLifecycle(
                             lifecycleOwner,
                             CameraSelector.DEFAULT_BACK_CAMERA,
@@ -79,6 +113,7 @@ fun CameraPreview(modifier: Modifier = Modifier) {
                         cameraUnavailable = false
                     } catch (_: Exception) {
                         camera = null
+                        imageCapture = null
                         cameraUnavailable = true
                     }
                 }
@@ -89,6 +124,7 @@ fun CameraPreview(modifier: Modifier = Modifier) {
         onDispose {
             disposed = true
             camera = null
+            imageCapture = null
             cameraProvider?.unbindAll()
         }
     }
@@ -97,6 +133,12 @@ fun CameraPreview(modifier: Modifier = Modifier) {
         AndroidView(
             factory = { previewView },
             modifier = Modifier.fillMaxSize(),
+        )
+        ViewfinderOverlay(
+            onManualTrigger = ::captureFrame,
+            captureEnabled = imageCapture != null && !cameraUnavailable,
+            isCapturing = isCapturing,
+            statusMessage = captureStatus,
         )
         if (cameraUnavailable) {
             Surface(
