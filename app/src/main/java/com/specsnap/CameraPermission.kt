@@ -35,7 +35,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 
 @Composable
-fun RequestCameraPermission() {
+fun RequestCameraPermission(viewModel: CameraScanViewModel) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var hasCameraPermission by remember {
@@ -69,7 +69,7 @@ fun RequestCameraPermission() {
     }
 
     if (hasCameraPermission) {
-        CameraPreview(modifier = Modifier.fillMaxSize())
+        CameraPreview(viewModel = viewModel, modifier = Modifier.fillMaxSize())
     } else {
         CameraPermissionPrompt(
             permissionWasDenied = permissionWasDenied,

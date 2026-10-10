@@ -15,16 +15,26 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import android.graphics.RectF
+import android.util.Size
+
+private const val RETICLE_WIDTH_FRACTION = 0.76f
+private const val RETICLE_HEIGHT_FRACTION = 0.34f
 
 @Composable
 fun ViewfinderOverlay(
-    onManualTrigger: () -> Unit,
+    onManualTrigger: (reticleBounds: RectF, previewSize: Size) -> Unit,
     modifier: Modifier = Modifier,
     captureEnabled: Boolean = true,
     isCapturing: Boolean = false,
@@ -40,11 +50,12 @@ fun ViewfinderOverlay(
         ),
         label = "scan-progress",
     )
+    var overlaySize by remember { mutableStateOf(IntSize.Zero) }
 
-    Box(modifier = modifier.fillMaxSize()) {
+    Box(modifier = modifier.fillMaxSize().onSizeChanged { overlaySize = it }) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val frameWidth = size.width * 0.76f
-            val frameHeight = size.height * 0.34f
+            val frameWidth = size.width * RETICLE_WIDTH_FRACTION
+            val frameHeight = size.height * RETICLE_HEIGHT_FRACTION
             val left = (size.width - frameWidth) / 2f
             val top = (size.height - frameHeight) / 2f
             val right = left + frameWidth
@@ -132,8 +143,19 @@ fun ViewfinderOverlay(
         }
 
         Button(
-            onClick = onManualTrigger,
-            enabled = captureEnabled && !isCapturing,
+            onClick = {
+                val width = overlaySize.width.toFloat()
+                val height = overlaySize.height.toFloat()
+                val frameWidth = width * RETICLE_WIDTH_FRACTION
+                val frameHeight = height * RETICLE_HEIGHT_FRACTION
+                val left = (width - frameWidth) / 2f
+                val top = (height - frameHeight) / 2f
+                onManualTrigger(
+                    RectF(left, top, left + frameWidth, top + frameHeight),
+                    Size(overlaySize.width, overlaySize.height),
+                )
+            },
+            enabled = captureEnabled && !isCapturing && overlaySize.width > 0 && overlaySize.height > 0,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 32.dp),

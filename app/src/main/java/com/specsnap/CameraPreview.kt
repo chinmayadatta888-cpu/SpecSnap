@@ -1,6 +1,11 @@
 package com.specsnap
 
 import android.view.MotionEvent
+import android.graphics.ImageFormat
+import android.graphics.Rect
+import android.graphics.RectF
+import android.view.Surface
+import android.util.Size
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.FocusMeteringAction
@@ -17,6 +22,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,7 +36,10 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import java.util.concurrent.TimeUnit
 
 @Composable
-fun CameraPreview(modifier: Modifier = Modifier) {
+fun CameraPreview(
+    viewModel: CameraScanViewModel,
+    modifier: Modifier = Modifier,
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var camera by remember { mutableStateOf<Camera?>(null) }
@@ -58,21 +67,45 @@ fun CameraPreview(modifier: Modifier = Modifier) {
     var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
     var isCapturing by remember { mutableStateOf(false) }
     var captureStatus by remember { mutableStateOf<String?>(null) }
+    val scanState by viewModel.uiState.collectAsState()
 
-    fun captureFrame() {
+    fun captureFrame(reticleBounds: RectF, previewSize: Size) {
         val captureUseCase = imageCapture ?: return
         if (isCapturing) return
+        if (previewView.width <= 0 || previewView.height <= 0) {
+            captureStatus = "Camera preview is not ready. Try again."
+            return
+        }
 
         isCapturing = true
         captureStatus = null
         try {
+            captureUseCase.targetRotation = previewView.display?.rotation ?: Surface.ROTATION_0
             captureUseCase.takePicture(
                 ContextCompat.getMainExecutor(context),
                 object : ImageCapture.OnImageCapturedCallback() {
                     override fun onCaptureSuccess(image: ImageProxy) {
-                        image.close()
-                        isCapturing = false
-                        captureStatus = "Capture complete."
+                        try {
+                            require(image.format == ImageFormat.JPEG) {
+                                "Camera capture returned an unsupported image format."
+                            }
+                            val jpegBuffer = image.planes.firstOrNull()?.buffer?.duplicate()
+                                ?: throw IllegalArgumentException("Camera capture returned no image data.")
+                            val jpegBytes = ByteArray(jpegBuffer.remaining())
+                            jpegBuffer.get(jpegBytes)
+                            viewModel.analyzeCapturedImage(
+                                jpegBytes = jpegBytes,
+                                cameraCropRect = Rect(image.cropRect),
+                                rotationDegrees = image.imageInfo.rotationDegrees,
+                                previewBounds = RectF(reticleBounds),
+                                previewSize = previewSize,
+                            )
+                        } catch (_: Exception) {
+                            captureStatus = "Could not prepare the captured image. Try again."
+                        } finally {
+                            image.close()
+                            isCapturing = false
+                        }
                     }
 
                     override fun onError(exception: ImageCaptureException) {
@@ -102,6 +135,7 @@ fun CameraPreview(modifier: Modifier = Modifier) {
                         }
                         val imageCaptureUseCase = ImageCapture.Builder()
                             .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                            .setOutputFormat(ImageCapture.OUTPUT_FORMAT_JPEG)
                             .build()
                         imageCapture = imageCaptureUseCase
                         camera = cameraProvider?.bindToLifecycle(
@@ -136,9 +170,9 @@ fun CameraPreview(modifier: Modifier = Modifier) {
         )
         ViewfinderOverlay(
             onManualTrigger = ::captureFrame,
-            captureEnabled = imageCapture != null && !cameraUnavailable,
+            captureEnabled = imageCapture != null && !cameraUnavailable && !scanState.isAnalyzing,
             isCapturing = isCapturing,
-            statusMessage = captureStatus,
+            statusMessage = captureStatus ?: scanState.statusMessage,
         )
         if (cameraUnavailable) {
             Surface(
