@@ -22,6 +22,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -68,6 +69,11 @@ fun CameraPreview(
     var isCapturing by remember { mutableStateOf(false) }
     var captureStatus by remember { mutableStateOf<String?>(null) }
     val scanState by viewModel.uiState.collectAsState()
+    var showComponentDetails by remember { mutableStateOf(false) }
+
+    LaunchedEffect(scanState.component) {
+        if (scanState.component != null) showComponentDetails = true
+    }
 
     fun captureFrame(reticleBounds: RectF, previewSize: Size) {
         val captureUseCase = imageCapture ?: return
@@ -183,6 +189,14 @@ fun CameraPreview(
                     text = "Camera preview is unavailable. Check that a camera is available and try again.",
                     modifier = Modifier.align(Alignment.Center),
                     style = MaterialTheme.typography.bodyLarge,
+                )
+            }
+        }
+        if (showComponentDetails) {
+            scanState.component?.let { component ->
+                ComponentDetailSheet(
+                    component = component,
+                    onDismiss = { showComponentDetails = false },
                 )
             }
         }
